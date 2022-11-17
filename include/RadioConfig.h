@@ -1,6 +1,6 @@
 #pragma once
 
-#define MY_RADIO_NRF24
+#define MY_RADIO_RF24
 
 #define DEFAULT_RF24_CHANNEL		(90)
 #define DEFAULT_RF24_PA_LEVEL_NODE	(RF24_PA_LOW)

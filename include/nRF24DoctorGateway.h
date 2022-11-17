@@ -46,7 +46,7 @@
 #define BUTTON_RESTORE_DEFAULTS_PIN 			4    	// physical pin , use internal pullup
 #define BUTTON_RESTORE_DEFAULTS_PRESS_TIME_MS 	(1000) 	// time the button to restore defaults has to be pressed to become active
 
-#include "shared/RadioConfig.h"
+#include "RadioConfig.h"
 
 #define MY_RF24_IRQ_PIN               (2)
 #define MY_RX_MESSAGE_BUFFER_FEATURE
@@ -54,7 +54,7 @@
 
 // Set LOW transmit power level as default, if you have an amplified NRF-module and
 // power your radio separately with a good regulator you can turn up PA level.
-//#define MY_RF24_PA_LEVEL              RF24_PA_LOW
+// #define MY_RF24_PA_LEVEL              RF24_PA_HIGH
 
 // Enable serial gateway
 #define MY_GATEWAY_SERIAL
@@ -93,11 +93,11 @@
 #define DELAY_BETWEEN_RADIO_SETTINGS_PRINT_MS (20000)           // Print Radio Settings to Serial Monitor every x[ms]
 #define MY_TRANSPORT_SANITY_CHECK_INTERVAL_MS (3000000000)      // To Prevent the MySensors library from resetting back to default radio settings
 #include <MySensors.h>
-#include "shared/Generic.h"
-#include "shared/RadioStorage.h"
+#include "Generic.h"
+#include "RadioStorage.h"
 #include <Bounce2.h>	// button debounce  Download: https://github.com/thomasfredericks/Bounce2
 
-static Bounce buttonRestoreDefaults = Bounce(); 
+static Bounce buttonRestoreDefaults = Bounce();
 
 void before()
 {
@@ -108,7 +108,7 @@ void before()
 
 void setup()
 {
-	pinMode(BUTTON_RESTORE_DEFAULTS_PIN, INPUT_PULLUP); 
+	pinMode(BUTTON_RESTORE_DEFAULTS_PIN, INPUT_PULLUP);
 	buttonRestoreDefaults.attach(BUTTON_RESTORE_DEFAULTS_PIN);
 	buttonRestoreDefaults.interval(BUTTON_RESTORE_DEFAULTS_PRESS_TIME_MS);
 }

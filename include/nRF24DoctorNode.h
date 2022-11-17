@@ -28,23 +28,16 @@ Change log:
 #define ENCODER_B_PIN       3		//Interrupt pin required for Encoder for optimal response
 // Define either TRIGGER_PIN or LED_PIN, as they share a pin
 //#define TRIGGER_PIN         4    	//Debugging purposes with scope
-#define LED_PIN 	        4    	//LED to indicate status.
-#define LCD_D7         		5    	
-#define LCD_D6         		6
-#define LCD_D5         		7
-#define LCD_D4         		8
 //PIN 9~13: NRF24 RADIO
-#define LCD_ENABLE   		A0
-#define LCD_RS   			A1
 #define MOSFET_2P2OHM_PIN   A2
 #define MOSFET_100OHM_PIN   A3
-#define BUTTON_PIN          A4    	// physical pin , use internal pullup
-#define CURRENT_PIN         A5
+#define BUTTON_PIN          4    	// physical pin , use internal pullup
+#define CURRENT_PIN         A1
 #define ADC_PIN_NR           5     	// A5, Match to CURRENT_PIN for configuring registers ADC
 
 
 //**** MySensors *****
-#include "shared/RadioConfig.h"
+#include "RadioConfig.h"
 
 #define MY_SPLASH_SCREEN_DISABLED			// Disable splash screen (saves some flash)
 #define MY_TRANSPORT_WAIT_READY_MS	(10)	// [ms] Init timeout for gateway not reachable
@@ -57,17 +50,19 @@ Change log:
 
 #include <SPI.h>
 #include <MySensors.h>
-#include "shared/Generic.h"
-#include "shared/RadioStorage.h"
+#include "Generic.h"
+#include "RadioStorage.h"
 #include <inttypes.h>
 
 //**** LCD *****
-#include <LiquidCrystal.h>                      // LCD display with parallel interface
+#include <Wire.h>
+#include <hd44780.h>                       // main hd44780 header
+#include <hd44780ioClass/hd44780_I2Cexp.h> // i2c expander i/o class header
 
+const uint8_t i2cAddr = 0x27;
 #define LCD_COLS 16
 #define LCD_ROWS 2
-LiquidCrystal lcd(LCD_RS,LCD_ENABLE, LCD_D4, LCD_D5, LCD_D6, LCD_D7); // LCD with parallel interface
-
+hd44780_I2Cexp lcd;
 
 //**** LCD Menu *****
 #include <LCDMenuLib2.h>	// Download 1.2.7: https://github.com/Jomelo/LCDMenuLib2
@@ -75,6 +70,7 @@ LiquidCrystal lcd(LCD_RS,LCD_ENABLE, LCD_D4, LCD_D5, LCD_D6, LCD_D7); // LCD wit
 #define _LCDML_DISP_cols             LCD_COLS
 #define _LCDML_DISP_rows             LCD_ROWS
 #define _LCDML_DISP_cfg_scrollbar    1      // enable a scrollbar
+#define _LCDML_DISP_cfg_cursor       0x7E   // cursor Symbol
 
 const uint8_t scroll_bar[][8] = {
 	{B10001, B10001, B10001, B10001, B10001, B10001, B10001, B10001}, // scrollbar top
@@ -82,18 +78,48 @@ const uint8_t scroll_bar[][8] = {
 	{B10001, B10001, B11111, B11111, B10001, B10001, B10001, B10001}, // scroll state 2
 	{B10001, B10001, B10001, B10001, B11111, B11111, B10001, B10001}, // scroll state 3
 	{B10001, B10001, B10001, B10001, B10001, B10001, B11111, B11111}  // scrollbar bottom
-}; 
+};
 
 void lcdml_menu_display();
 void lcdml_menu_clear();
 void lcdml_menu_control();
+void menuPage(uint8_t param);
+void menuCfgScanChStart(uint8_t line);
+void menuCfgScanChStop(uint8_t line);
+void menuBack(__attribute__((unused)) uint8_t param);
+void menuCfgChannel(uint8_t line);
+void menuCfgGwPa(uint8_t line);
+void menuCfgPayload(uint8_t line);
+void menuResetBuf(__attribute__((unused)) uint8_t param);
+void menuCfgNodePa(uint8_t line);
+void menuCfgMsgRate(uint8_t line);
+void menuSaveNodeEeprom(__attribute__((unused)) uint8_t param);
+void menuSaveNodeAndGwEeprom(__attribute__((unused)) uint8_t param);
+void menuCfgRate(uint8_t line);
+void menuCfgDstNode(uint8_t line);
+void menuDefaultNodeEeprom(__attribute__((unused)) uint8_t param);
+void menuResetNode(__attribute__((unused)) uint8_t param);
+void LCD_SetScrollbarChars();
+void ClearStorageAndCounters();
+void LCD_clear();
+void print_LCD_line(const char *string, int row, int col);
+void statemachine();
+unsigned long transmit(size_t iPayloadLength);
+void store_ArcCnt_in_array();
+void MY_RF24_startListening();
+float GetAvgADCBits(int iNrSamples);
+void getMeanAndMaxFromIntArray(uint8_t *mean_value, uint8_t *max_value, uint8_t *buffer, uint8_t size);
+void getMeanAndMaxFromArray(uint16_t *mean_value, uint16_t *max_value, unsigned long *buffer, uint8_t size);
+unsigned long Time_to_reach_InitCurrent_uA(float Threshold_current_uA, unsigned long lTimeOut);
+bool SettledSleepCurrent_uA_reached(float Threshold_current_uA_per_sec, unsigned long lTimeOut);
+uint8_t IndexOfValueInArray(uint16_t val, uint16_t *array, uint8_t size);
 
 static LCDMenuLib2_menu LCDML_0 (255, 0, 0, NULL, NULL); // root menu element (do not change)
 static LCDMenuLib2 LCDML(LCDML_0, LCD_ROWS, LCD_COLS, lcdml_menu_display, lcdml_menu_clear, lcdml_menu_control);
 
 enum page { PAGE_STATISTICS, PAGE_TIMING, PAGE_MSGRATE, PAGE_COUNTERS, PAGE_TXRXPOWER, PAGE_SLEEPPOWER, PAGE_SCANNER };
 
-// add            (id   prev_layer      new_num                      lang_char_array     callback_function)  
+// add            (id   prev_layer      new_num                      lang_char_array     callback_function)
 // addAdvanced    (id   prev_layer      new_num  condition           lang_char_array     callback_function    parameter (0-255)  menu function type )
 //                                                                   "01234567890123"
 LCDML_addAdvanced (0  , LCDML_0         , 1    , NULL              , "Statistics   >"  , menuPage           , PAGE_STATISTICS  , _LCDML_TYPE_default);
@@ -141,12 +167,12 @@ LCDML_createMenu(_LCDML_DISP_cnt);
 #include <Bounce2.h>	// button debounce  Download: https://github.com/thomasfredericks/Bounce2
 
 static Encoder encoder(ENCODER_A_PIN, ENCODER_B_PIN);
-static Bounce button = Bounce(); 
+static Bounce button = Bounce();
 
 //**** MySensors Messages ****
 MyMessage MsgCounter(CHILD_ID_COUNTER, V_CUSTOM);   				//Send Message Counter value
 
-// Actual data exchanged in a message 
+// Actual data exchanged in a message
 #define PAYLOAD_LENGTH_MIN         (2)				//The counter is always transmitted and is 2 bytes in size
 #define PAYLOAD_LENGTH_MAX (MAX_PAYLOAD)
 #pragma pack(push, 1)								// exact fit - no padding (to save space)
@@ -154,7 +180,7 @@ union t_MessageData {
   uint8_t m_dynMessage[MAX_PAYLOAD];
 };
 #pragma pack(pop)									//back to the previous packing mode
-//Message Rate 
+//Message Rate
 uint8_t iGetMsgRate = 0;
 
 const int iNrArcCnt = 15;
@@ -235,12 +261,12 @@ static bool bChannelScanner = false;
 /*****************************************************************************/
 void lcdml_menu_control(void)
 {
-	if (LCDML.BT_setup()) 
+	if (LCDML.BT_setup())
 	{
 		// run once; init pins & debouncer
 		pinMode(ENCODER_A_PIN      , INPUT_PULLUP);
 		pinMode(ENCODER_B_PIN      , INPUT_PULLUP);
-		pinMode(BUTTON_PIN , INPUT_PULLUP); 
+		pinMode(BUTTON_PIN , INPUT_PULLUP);
 		button.attach(BUTTON_PIN);
 		button.interval(5); // interval in ms
 	}
@@ -276,7 +302,7 @@ void lcdml_menu_control(void)
 	if (pressed and (not prevPressed))
 	{
 		// Pressed and previously not pressed
-		LCDML.BT_enter();  
+		LCDML.BT_enter();
 	}
 	prevPressed = pressed;
 }
@@ -294,7 +320,7 @@ void delay_with_update(unsigned long delay_ms)
 // ADC complete ISR
 ISR (ADC_vect){
 	//Continuous sampling of ADC
-	iNrAdcSamplesElapsed++;	
+	iNrAdcSamplesElapsed++;
 	if (iNrAdcSamplesElapsed >= iStartStorageAfterNrAdcSamples){	//Skip first 130us for TX settling according to datasheet
 #ifdef TRIGGER_PIN
 		digitalWrite(TRIGGER_PIN,HIGH);				//Debugging purposes with scope
@@ -321,16 +347,16 @@ void ISR_TransmitTriggerADC(){
 	iStartStorageAfterNrAdcSamples  = 7; 	//Note this depends on the set ADC prescaler (currently: 16x prescaler) + Matched to TX timing
 	switch (iRf24DataRate){
 		case 0:
-			iStopStorageAfterNrAdcSamples 	= 12 + uint8_t(iPayloadSize*0.25); 	//Note this depends on the set ADC prescaler (currently: 16x prescaler)	+ Matched to TX timing		
+			iStopStorageAfterNrAdcSamples 	= 12 + uint8_t(iPayloadSize*0.25); 	//Note this depends on the set ADC prescaler (currently: 16x prescaler)	+ Matched to TX timing
 			break;
 		case 1:
 			iStopStorageAfterNrAdcSamples 	= 8 + uint8_t(iPayloadSize*0.125); 	//Note this depends on the set ADC prescaler (currently: 16x prescaler)	+ Matched to TX timing
 			break;
 		case 2:
-			iStopStorageAfterNrAdcSamples 	= 25 + uint8_t(iPayloadSize*1.4); 	//Note this depends on the set ADC prescaler (currently: 16x prescaler)	+ Matched to TX timing		
+			iStopStorageAfterNrAdcSamples 	= 25 + uint8_t(iPayloadSize*1.4); 	//Note this depends on the set ADC prescaler (currently: 16x prescaler)	+ Matched to TX timing
 			break;
 	}
-	
+
 	iNrAdcSamplesElapsed	= 0;
 	iAdcSum 				= 0;
 	bAdcDone 				= false;
@@ -356,7 +382,7 @@ void before() {						//Initialization before the MySensors library starts up
 
 	//**** ADC SETUP ****
 	ADCSRA =  bit (ADEN);                      				// turn ADC on
-	ADCSRA |= bit (ADPS2);                               	// Prescaler of 16: To get sufficient samples in Tx Current Measurement 
+	ADCSRA |= bit (ADPS2);                               	// Prescaler of 16: To get sufficient samples in Tx Current Measurement
 	ADMUX  =  bit (REFS0) | bit (REFS1) | (ADC_PIN_NR & 0x07);  // ARef internal and select input port
 
 	//****  LCD *****
@@ -372,6 +398,16 @@ void before() {						//Initialization before the MySensors library starts up
 }
 
 void setup() {
+  int status;
+  status = lcd.begin(LCD_COLS, LCD_ROWS);
+  if(status) // non zero status means it was unsuccesful
+  {
+    // hd44780 has a fatalError() routine that blinks an led if possible
+    // begin() failed so blink error code using the onboard LED if possible
+    hd44780::fatalError(status); // does not return
+  }
+
+
 	ClearStorageAndCounters();
 //	activateRadioSettings();
 //	logRadioSettings();
@@ -401,7 +437,7 @@ void presentation() {
 /*****************************************************************************/
 void loop()
 {
-	LCDML.loop();  
+	LCDML.loop();
 	statemachine();
 }
 
@@ -411,7 +447,7 @@ void loop()
 
 enum state {	STATE_IDLE,
 				// Regular measurement states
-				STATE_TX, STATE_RX, STATE_PROCESS_DATA, STATE_SLEEP,								
+				STATE_TX, STATE_RX, STATE_PROCESS_DATA, STATE_SLEEP,
 				// Channel scanning Mode state
 				STATE_CH_SCAN, STATE_CH_SCAN_RESTART, STATE_CH_SCAN_MEASURE, STATE_CH_SCAN_WAIT,
 				// Gateway update states
@@ -451,7 +487,7 @@ void statemachine()
 				EIFR |= 0x01;					//Clear interrupt flag to prevent an immediate trigger
 				attachPCINT(digitalPinToPinChangeInterrupt(MY_RF24_CE_PIN), ISR_TransmitTriggerADC,RISING);
 				unsigned long lTcurTransmit = transmit(iPayloadSize);
-				
+
 				//Time rate of transmissions
 				iGetMsgRate = static_cast<uint8_t>((1e6/(lTcurTransmit-timestamp))+0.5);
 				timestamp = lTcurTransmit;
@@ -459,7 +495,7 @@ void statemachine()
 				if (bAdcDone) {				//Get TX Current Measurement Data...it should already have finished
 					TransmitCurrent_uA 	= uAperBit1*((float)iAdcSum/(float)(iStopStorageAfterNrAdcSamples-iStartStorageAfterNrAdcSamples+1));
 					bAdcDone = false;
-				}				
+				}
 				//else{Sprintln(F("BAD ADC TIMING:"));} //Will happen if the node can not find the gateway @ startup - but no problem.
 				store_ArcCnt_in_array();	//Store the number of auto re-transmits by the radio in the array
 
@@ -481,7 +517,7 @@ void statemachine()
 			getMeanAndMaxFromIntArray(&iArcCntAvg, &iArcCntMax, iArrayArcCnt, iNrArcCnt);
 			getMeanAndMaxFromArray(&iMeanDelayFirstHop_ms,&iMaxDelayFirstHop_ms,lTimeDelayBuffer_FirstHop_us,iNrTimeDelays);
 			getMeanAndMaxFromArray(&iMeanDelayDestination_ms,&iMaxDelayDestination_ms,lTimeDelayBuffer_Destination_us,iNrTimeDelays);
-			
+
 			currState = STATE_IDLE;
 			break;
 
@@ -519,14 +555,14 @@ void statemachine()
 			}
 			else {SleepCurrent_uA = SleepCurrent_uA_intermediate;}
 //			Sprint(F("SleepCurrent_uA:"));Sprintln(SleepCurrent_uA);
-			
+
 			//Restore standby power state
 			digitalWrite(MOSFET_2P2OHM_PIN, HIGH);	//Enable 2.2Ohm
 			digitalWrite(MOSFET_100OHM_PIN, LOW);
 			transportStandBy();
 
 			currState = STATE_IDLE;
-			break;		
+			break;
 		}
 
 		case STATE_CH_SCAN:
@@ -639,7 +675,7 @@ void receive(const MyMessage &message) {
 
 		uint16_t iIndexInArray = iNewMessage % iMaxNumberOfMessages;
 		BIT_CLR_ARRAY(bArrayNAckMessages, iIndexInArray); 			// set corresponding flag to received.
-		
+
 		// Check Message (Round trip) Delay
 		uint8_t iIndexInTimeArray = IndexOfValueInArray(iNewMessage, iMessageIndexBuffer, iNrTimeDelays); //Look-up if message is present in MessageIndexBuffer for delay calculation
 		if ((iIndexInTimeArray != 255) && iIndexInTimeArray <=iNrTimeDelays){
@@ -651,10 +687,10 @@ void receive(const MyMessage &message) {
 
 unsigned long transmit(size_t iPayloadLength) {
 	static int iIndexInArrayFailedMessages  = 0 ;
-	static int iIndexInArrayTimeMessages  = 0 ;	
+	static int iIndexInArrayTimeMessages  = 0 ;
 	static t_MessageData MessageData;
 
-	iPayloadLength = constrain(iPayloadLength,PAYLOAD_LENGTH_MIN,PAYLOAD_LENGTH_MAX);	
+	iPayloadLength = constrain(iPayloadLength,PAYLOAD_LENGTH_MIN,PAYLOAD_LENGTH_MAX);
 	iMessageCounter++;
 	MessageData.m_dynMessage[0] = (uint8_t)((iMessageCounter & 0xFF00) >> 8);
 	MessageData.m_dynMessage[1] = (uint8_t)(iMessageCounter & 0x00FF);
@@ -671,7 +707,7 @@ unsigned long transmit(size_t iPayloadLength) {
 	iMessageIndexBuffer[iIndexInArrayTimeMessages]=iMessageCounter;		// To link the Time Stamp to the correct message when we receive the acknowledge
 	iNrNAckMessages++;													// Add one to the Not Acknowledged Message counter and remove it again if/when it is received.
 	lTimeOfTransmit_us[iIndexInArrayTimeMessages] = micros();
-	
+
 #ifdef LED_PIN
 	// Light LED
 	digitalWrite(LED_PIN, HIGH);
@@ -810,7 +846,7 @@ void getMeanAndMaxFromIntArray(uint8_t *mean_value, uint8_t *max_value, uint8_t 
 	for (int i=0; i < size; i++)
 	{
 		if (buffer[i] != 0){
-			sum 		= sum + static_cast<uint16_t>(buffer[i]);	
+			sum 		= sum + static_cast<uint16_t>(buffer[i]);
 			iMaxValue	= max(iMaxValue,buffer[i]);
 			bNotZero=true;
 		}
@@ -821,7 +857,7 @@ void getMeanAndMaxFromIntArray(uint8_t *mean_value, uint8_t *max_value, uint8_t 
 	}
 	else {
 		*mean_value = 0;
-	}	
+	}
 }
 
 void getMeanAndMaxFromArray(uint16_t *mean_value, uint16_t *max_value, unsigned long *buffer, uint8_t size) {
@@ -832,7 +868,7 @@ void getMeanAndMaxFromArray(uint16_t *mean_value, uint16_t *max_value, unsigned 
 	for (int i=0; i < size; i++)
 	{
 		if (buffer[i] != 0){
-			sum 		= sum + (float)buffer[i];	
+			sum 		= sum + (float)buffer[i];
 			lMaxValue	= max(lMaxValue,buffer[i]);
 			iNrOfSamples++;
 		}
@@ -844,7 +880,7 @@ void getMeanAndMaxFromArray(uint16_t *mean_value, uint16_t *max_value, unsigned 
 	else {
 		*mean_value = 65535;	//INF identifier
 		*max_value 	= 65535;	//INF identifier
-	}	
+	}
 }
 
 float GetAvgADCBits(int iNrSamples) {
@@ -918,7 +954,7 @@ void LCD_SetScrollbarChars()
 	lcd.createChar(1, (uint8_t*)scroll_bar[1]);
 	lcd.createChar(2, (uint8_t*)scroll_bar[2]);
 	lcd.createChar(3, (uint8_t*)scroll_bar[3]);
-	lcd.createChar(4, (uint8_t*)scroll_bar[4]);  
+	lcd.createChar(4, (uint8_t*)scroll_bar[4]);
 }
 
 /*****************************************************************/
@@ -1131,21 +1167,21 @@ void menuPage(uint8_t param)
 		}
 
 		if (exit)
-		{      
+		{
 			LCDML.FUNC_goBackToMenu();  // leave this function
 			// Restore special characters if they got overwritten
 			LCD_SetScrollbarChars();
 		}
-	} 
+	}
 }
 
 void menuCfgEntry( uint8_t &value )
 {
 	// make only an action when the cursor stands on this menuitem
 	//check Button
-	if (LCDML.BT_checkAny()) 
+	if (LCDML.BT_checkAny())
 	{
-		if (LCDML.BT_checkEnter()) 
+		if (LCDML.BT_checkEnter())
 		{
 			// this function checks returns the scroll disable status (0 = menu scrolling enabled, 1 = menu scrolling disabled)
 			if (LCDML.MENU_getScrollDisableStatus() == 0)
@@ -1169,138 +1205,138 @@ void menuCfgEntry( uint8_t &value )
 }
 
 void menuCfgScanChStart(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iRf24ChannelScanStart );
 		iRf24ChannelScanStart = CONSTRAIN_HI( iRf24ChannelScanStart, iRf24ChannelScanStop );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("Start Ch. %3d"), iRf24ChannelScanStart);
 
 	// use the line from function parameters
 	lcd.setCursor(1, line);
-	lcd.print(buf); 
+	lcd.print(buf);
 }
 
 void menuCfgScanChStop(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iRf24ChannelScanStop );
 		iRf24ChannelScanStop = constrain( iRf24ChannelScanStop, iRf24ChannelScanStart, NRF24_MAX_CHANNEL );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("Stop  Ch. %3d"), iRf24ChannelScanStop);
 
 	// use the line from function parameters
 	lcd.setCursor(1, line);
-	lcd.print(buf); 
+	lcd.print(buf);
 }
 
 void menuCfgPayload(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iPayloadSize );
 		iPayloadSize = constrain(iPayloadSize, PAYLOAD_LENGTH_MIN, PAYLOAD_LENGTH_MAX );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("Payload    %2d"), iPayloadSize);
 
 	// use the line from function parameters
 	lcd.setCursor(1, line);
-	lcd.print(buf); 
+	lcd.print(buf);
 }
 
 void menuCfgMsgRate(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iSetMsgRate );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("Msg Rate  %3d"), iSetMsgRate);
 
 	// use the line from function parameters
 	lcd.setCursor(1, line);
-	lcd.print(buf); 
+	lcd.print(buf);
 }
 
 void menuCfgChannel(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iRf24Channel );
 		iRf24Channel = CONSTRAIN_HI( iRf24Channel, NRF24_MAX_CHANNEL );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("Channel   %3d"), iRf24Channel);
 
 	// use the line from function parameters
 	lcd.setCursor(1, line);
-	lcd.print(buf); 
+	lcd.print(buf);
 }
 
 void menuCfgDstNode(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iDestinationNode );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("Dest Node %3d"), iDestinationNode);
 
 	// use the line from function parameters
 	lcd.setCursor(1, line);
-	lcd.print(buf); 
+	lcd.print(buf);
 }
 
 void menuCfgNodePa(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iRf24PaLevel );
 		iRf24PaLevel = rf24PaLevelConstrain( iRf24PaLevel );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("Node PA  %-4s"), rf24PaLevelToString(iRf24PaLevel));
 
 	// use the line from function parameters
 	lcd.setCursor(1, line);
-	lcd.print(buf); 
+	lcd.print(buf);
 }
 
 void menuCfgGwPa(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iRf24PaLevelGw );
 		iRf24PaLevelGw = rf24PaLevelConstrain( iRf24PaLevelGw );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("GW PA    %-4s"), rf24PaLevelToString(iRf24PaLevelGw));
 
 	// use the line from function parameters
 	lcd.setCursor(1, line);
-	lcd.print(buf); 
+	lcd.print(buf);
 }
 
 void menuCfgRate(uint8_t line)
-{ 
-	if (line == LCDML.MENU_getCursorPos()) 
+{
+	if (line == LCDML.MENU_getCursorPos())
 	{
 		menuCfgEntry( iRf24DataRate );
 		iRf24DataRate = rf24DataRateConstrain( iRf24DataRate );
-	} 
+	}
 
 	char buf[LCD_COLS+1];
 	snprintf_P(buf, sizeof(buf), PSTR("Datarate %-4s"), rf24DataRateToString(iRf24DataRate));
@@ -1320,7 +1356,7 @@ void menuSaveNodeEeprom(__attribute__((unused)) uint8_t param)
 		delay(restartDelayMs);
 		saveEepromAndReset();
 		// Never return here...
-	} 
+	}
 }
 
 void menuDefaultNodeEeprom(__attribute__((unused)) uint8_t param)
@@ -1334,7 +1370,7 @@ void menuDefaultNodeEeprom(__attribute__((unused)) uint8_t param)
 		loadDefaults();
 		saveEepromAndReset();
 		// Never return here...
-	} 
+	}
 }
 
 void menuSaveNodeAndGwEeprom(__attribute__((unused)) uint8_t param)
@@ -1359,12 +1395,12 @@ void menuSaveNodeAndGwEeprom(__attribute__((unused)) uint8_t param)
 				print_LCD_line(F("Failed"), 0, 0);
 			}
 			if (LCDML.BT_checkAny()) // check if any button is pressed (enter, up, down, left, right)
-			{      
+			{
 				LCDML.FUNC_goBackToMenu();  // leave this function
 			}
 		}
 		prevUpdateGateway = bUpdateGateway;
-	} 
+	}
 }
 
 void menuResetBuf(__attribute__((unused)) uint8_t param)
@@ -1374,11 +1410,11 @@ void menuResetBuf(__attribute__((unused)) uint8_t param)
 		ClearStorageAndCounters();
 		LCD_clear();
 		print_LCD_line(F("Cleared"), 0, 0);
-	} 
+	}
 	if (LCDML.FUNC_loop())
 	{
 		if (LCDML.BT_checkAny()) // check if any button is pressed (enter, up, down, left, right)
-		{      
+		{
 			LCDML.FUNC_goBackToMenu();  // leave this function
 		}
 	}
@@ -1393,7 +1429,7 @@ void menuResetNode(__attribute__((unused)) uint8_t param)
 		delay(restartDelayMs);
 		reset();
 		// Never return here...
-	} 
+	}
 }
 
 void menuBack(__attribute__((unused)) uint8_t param)
@@ -1402,5 +1438,133 @@ void menuBack(__attribute__((unused)) uint8_t param)
 	{
 		// Go one level up
 		LCDML.FUNC_goBackToMenu(1);
-	} 
+	}
+}
+
+
+void lcdml_menu_clear()
+{
+	lcd.clear();
+	lcd.setCursor(0, 0);
+}
+
+void lcdml_menu_display()
+{
+	// update content
+	if (LCDML.DISP_checkMenuUpdate())
+	{
+		// clear menu
+		LCDML.DISP_clear();
+
+		// declaration of some variables
+		// content variable
+		char content_text[_LCDML_DISP_cols];  // save the content text of every menu element
+		// menu element object
+		LCDMenuLib2_menu *tmp;
+		// some limit values
+		uint8_t i = LCDML.MENU_getScroll();
+		uint8_t maxi = _LCDML_DISP_rows + i;
+		uint8_t n = 0;
+
+		// check if this element has children
+		tmp = LCDML.MENU_getObj()->getChild(LCDML.MENU_getScroll());
+		if (tmp)
+		{
+			// loop to display lines
+			do
+			{
+				// check if a menu element has a condetion and if the condetion be true
+				if (tmp->checkCondition())
+				{
+					// check the type of a menu element
+					if (tmp->checkType_menu() == true)
+					{
+						// display normal content
+						LCDML_getContent(content_text, tmp->getID());
+						lcd.setCursor(1, n);
+						lcd.print(content_text);
+					}
+					else
+					{
+						if (tmp->checkType_dynParam())
+						{
+							tmp->callback(n);
+						}
+					}
+					// increment some values
+					i++;
+					n++;
+				}
+			// try to go to the next sibling and check the number of displayed rows
+			} while (((tmp = tmp->getSibling(1)) != NULL) && (i < maxi));
+		}
+	}
+
+	if (LCDML.DISP_checkMenuCursorUpdate())
+	{
+		uint8_t n_max             = (LCDML.MENU_getChilds() >= _LCDML_DISP_rows) ? _LCDML_DISP_rows : (LCDML.MENU_getChilds());
+		uint8_t scrollbar_min     = 0;
+		uint8_t scrollbar_max     = LCDML.MENU_getChilds();
+		uint8_t scrollbar_cur_pos = LCDML.MENU_getCursorPosAbs();
+		uint8_t scroll_pos        = ((1.*n_max * _LCDML_DISP_rows) / (scrollbar_max - 1) * scrollbar_cur_pos);
+
+
+		// display rows
+		for (uint8_t n = 0; n < n_max; n++)
+		{
+			lcd.setCursor(0, n);
+
+			//set cursor char
+			if (n == LCDML.MENU_getCursorPos())
+			{
+				lcd.write(_LCDML_DISP_cfg_cursor);
+			}
+			else
+			{
+				lcd.write(' ');
+			}
+
+			// delete or reset scrollbar
+			if (_LCDML_DISP_cfg_scrollbar == 1)
+			{
+				if (scrollbar_max > n_max)
+				{
+					lcd.setCursor((_LCDML_DISP_cols - 1), n);
+					lcd.write((uint8_t)0);
+				}
+				else
+				{
+					lcd.setCursor((_LCDML_DISP_cols - 1), n);
+					lcd.print(' ');
+				}
+			}
+		}
+
+		// display scrollbar
+		if (_LCDML_DISP_cfg_scrollbar == 1)
+		{
+			if (scrollbar_max > n_max)
+			{
+				//set scroll position
+				if (scrollbar_cur_pos == scrollbar_min)
+				{
+					// min pos
+					lcd.setCursor((_LCDML_DISP_cols - 1), 0);
+					lcd.write((uint8_t)1);
+				}
+				else if (scrollbar_cur_pos == (scrollbar_max - 1))
+				{
+					// max pos
+					lcd.setCursor((_LCDML_DISP_cols - 1), (n_max - 1));
+					lcd.write((uint8_t)4);
+				}
+				else
+				{
+					// between
+					lcd.setCursor((_LCDML_DISP_cols - 1), scroll_pos / n_max);
+					lcd.write((uint8_t)(scroll_pos % n_max) + 1);
+				}
+			}
+		}
+	}
 }
