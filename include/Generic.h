@@ -1,4 +1,8 @@
-#pragma once
+#ifndef GENERIC_H
+#define GENERIC_H
+
+
+#include <Arduino.h>
 
 #define COUNT_OF(x) 			((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #define CONSTRAIN_HI(amt,high)	((amt)>(high)?(high):(amt))
@@ -22,27 +26,12 @@
 #define CHILD_ID_COUNTER        (0)
 #define CHILD_ID_UPDATE_GATEWAY (1)
 
-const char *pcPaLevelNames[]  = { "MIN", "LOW", "HIGH", "MAX" };
-const char *pcDataRateNames[] = { "1MBPS", "2MBPS" , "250KBPS"};
+extern const char *pcPaLevelNames[];
+extern const char *pcDataRateNames[];
 
-const char* rf24PaLevelToString( const uint8_t level )
-{
-	const uint8_t idx = CONSTRAIN_HI( level, COUNT_OF(pcPaLevelNames)-1 );
-	return pcPaLevelNames[idx];
-}
+const char* rf24PaLevelToString( const uint8_t level );
+uint8_t rf24PaLevelConstrain( const uint8_t level );
+const char* rf24DataRateToString( const uint8_t rate );
+uint8_t rf24DataRateConstrain( const uint8_t rate );
 
-uint8_t rf24PaLevelConstrain( const uint8_t level )
-{
-	return CONSTRAIN_HI( level, COUNT_OF(pcPaLevelNames)-1 );
-}
-
-const char* rf24DataRateToString( const uint8_t rate )
-{
-	const uint8_t idx = CONSTRAIN_HI( rate, COUNT_OF(pcDataRateNames)-1 );
-	return pcDataRateNames[idx];
-}
-
-uint8_t rf24DataRateConstrain( const uint8_t rate )
-{
-	return CONSTRAIN_HI( rate, COUNT_OF(pcDataRateNames)-1 );
-}
+#endif
