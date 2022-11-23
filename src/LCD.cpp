@@ -25,12 +25,12 @@ void print_LCD_line(const uint8_t c, int row, int col) {
 }
 
 void print_LCD_line(const char *string, int row, int col) {
-	lcd.setCursor(col,row);
+	lcd.setCursor(col, row);
 	lcd.print(string);
 }
 
 void print_LCD_line(const __FlashStringHelper *string, int row, int col) {
-	lcd.setCursor(col,row);
+	lcd.setCursor(col, row);
 	lcd.print(string);
 }
 
@@ -39,7 +39,7 @@ void LCD_clear() {
 }
 
 void LCD_setCursor(int row, int col) {
-   lcd.setCursor(col,row);
+   lcd.setCursor(col, row);
 }
 
 void LCD_write(uint8_t c) {
