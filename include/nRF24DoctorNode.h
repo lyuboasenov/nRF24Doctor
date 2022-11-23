@@ -15,11 +15,9 @@ Change log:
 	2018/04/17	Added support for TFT_ILI9163C display
 */
 
-#ifndef NRF24_DOCTOR_NODE_H
-#define NRF24_DOCTOR_NODE_H
+#pragma once
 
-#define SKETCH_NAME_STRING    "nRF24_Doctor_N250"
-#define SKETCH_VERSION_STRING "1.2"
+#if !defined(GATEWAY)
 
 #include <Menu.h>
 
@@ -37,4 +35,4 @@ void presentation() ;
 /*****************************************************************************/
 void loop() ;
 
-#endif
+#endif // !defined(MY_GATEWAY_FEATURE)

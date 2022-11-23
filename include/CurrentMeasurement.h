@@ -1,5 +1,6 @@
-#ifndef CURRENT_MEASUREMENT_H
-#define CURRENT_MEASUREMENT_H
+#pragma once
+
+#if !defined(GATEWAY)
 
 #include <Menu.h>
 
@@ -37,4 +38,4 @@ unsigned long Time_to_reach_InitCurrent_uA(float Threshold_current_uA, unsigned 
 bool SettledSleepCurrent_uA_reached(float Threshold_current_uA_per_sec, unsigned long lTimeOut);
 void ISR_TransmitTriggerADC();
 
-#endif // CURRENT_MEASUREMENT_H
+#endif // !defined(MY_GATEWAY_FEATURE)

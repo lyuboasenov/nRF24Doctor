@@ -1,40 +1,40 @@
 /**
-* The MySensors Arduino library handles the wireless radio link and protocol
-* between your home built sensors/actuators and HA controller of choice.
-* The sensors forms a self healing radio network with optional repeaters. Each
-* repeater and gateway builds a routing tables in EEPROM which keeps track of the
-* network topology allowing messages to be routed to nodes.
-*
-* Created by Henrik Ekblad <henrik.ekblad@mysensors.org>
-* Copyright (C) 2013-2015 Sensnology AB
-* Full contributor list: https://github.com/mysensors/Arduino/graphs/contributors
-*
-* Documentation: http://www.mysensors.org
-* Support Forum: http://forum.mysensors.org
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License
-* version 2 as published by the Free Software Foundation.
-*
-*******************************
-*
-* DESCRIPTION
-* The ArduinoGateway prints data received from sensors on the serial link.
-* The gateway accepts input on seral which will be sent out on radio network.
-*
-* The GW code is designed for Arduino Nano 328p / 16MHz
-*
-* Wire connections (OPTIONAL):
-* - Inclusion button should be connected between digital pin 3 and GND
-* - RX/TX/ERR leds need to be connected between +5V (anode) and digital pin 6/5/4 with resistor 270-330R in a series
-*
-* LEDs (OPTIONAL):
-* - To use the feature, uncomment any of the MY_DEFAULT_xx_LED_PINs
-* - RX (green) - blink fast on radio message recieved. In inclusion mode will blink fast only on presentation recieved
-* - TX (yellow) - blink fast on radio message transmitted. In inclusion mode will blink slowly
-* - ERR (red) - fast blink on error during transmission error or recieve crc error
-*
-*/
+ * The MySensors Arduino library handles the wireless radio link and protocol
+ * between your home built sensors/actuators and HA controller of choice.
+ * The sensors forms a self healing radio network with optional repeaters. Each
+ * repeater and gateway builds a routing tables in EEPROM which keeps track of the
+ * network topology allowing messages to be routed to nodes.
+ *
+ * Created by Henrik Ekblad <henrik.ekblad@mysensors.org>
+ * Copyright (C) 2013-2015 Sensnology AB
+ * Full contributor list: https://github.com/mysensors/Arduino/graphs/contributors
+ *
+ * Documentation: http://www.mysensors.org
+ * Support Forum: http://forum.mysensors.org
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ *******************************
+ *
+ * DESCRIPTION
+ * The ArduinoGateway prints data received from sensors on the serial link.
+ * The gateway accepts input on seral which will be sent out on radio network.
+ *
+ * The GW code is designed for Arduino Nano 328p / 16MHz
+ *
+ * Wire connections (OPTIONAL):
+ * - Inclusion button should be connected between digital pin 3 and GND
+ * - RX/TX/ERR leds need to be connected between +5V (anode) and digital pin 6/5/4 with resistor 270-330R in a series
+ *
+ * LEDs (OPTIONAL):
+ * - To use the feature, uncomment any of the MY_DEFAULT_xx_LED_PINs
+ * - RX (green) - blink fast on radio message recieved. In inclusion mode will blink fast only on presentation recieved
+ * - TX (yellow) - blink fast on radio message transmitted. In inclusion mode will blink slowly
+ * - ERR (red) - fast blink on error during transmission error or recieve crc error
+ *
+ */
 
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
@@ -43,14 +43,12 @@
 //**** DEBUG *****
 #define LOCAL_DEBUG
 
-#define BUTTON_RESTORE_DEFAULTS_PIN 			4    	// physical pin , use internal pullup
-#define BUTTON_RESTORE_DEFAULTS_PRESS_TIME_MS 	(1000) 	// time the button to restore defaults has to be pressed to become active
+#define BUTTON_RESTORE_DEFAULTS_PIN 4                 // physical pin , use internal pullup
+#define BUTTON_RESTORE_DEFAULTS_PRESS_TIME_MS (1000)  // time the button to restore defaults has to be pressed to become active
 
-#include "RadioConfig.h"
-
-#define MY_RF24_IRQ_PIN               (2)
+#define MY_RF24_IRQ_PIN (2)
 #define MY_RX_MESSAGE_BUFFER_FEATURE
-#define MY_RX_MESSAGE_BUFFER_SIZE     (15)    // Default size of 20 is rather large and leads to memory warnings
+#define MY_RX_MESSAGE_BUFFER_SIZE (15)                 // Default size of 20 is rather large and leads to memory warnings
 
 // Set LOW transmit power level as default, if you have an amplified NRF-module and
 // power your radio separately with a good regulator you can turn up PA level.
@@ -90,63 +88,44 @@
 //#define MY_DEFAULT_TX_LED_PIN  5  // the PCB, on board LED
 
 //**** MySensors Messages -- ADDED FOR nRF24DoctorGateway Configuration ****
-#define DELAY_BETWEEN_RADIO_SETTINGS_PRINT_MS (20000)           // Print Radio Settings to Serial Monitor every x[ms]
-#define MY_TRANSPORT_SANITY_CHECK_INTERVAL_MS (3000000000)      // To Prevent the MySensors library from resetting back to default radio settings
-#include <MySensors.h>
-#include "Generic.h"
-#include "RadioStorage.h"
-#include <Bounce2.h>	// button debounce  Download: https://github.com/thomasfredericks/Bounce2
+#define DELAY_BETWEEN_RADIO_SETTINGS_PRINT_MS (20000)       // Print Radio Settings to Serial Monitor every x[ms]
+#define MY_TRANSPORT_SANITY_CHECK_INTERVAL_MS (3000000000)  // To Prevent the MySensors library from resetting back to default radio settings
+#include <Bounce2.h>                                        // button debounce  Download: https://github.com/thomasfredericks/Bounce2
+#include <Radio.h>
+#include <Generic.h>
 
 static Bounce buttonRestoreDefaults = Bounce();
 
-void before()
-{
-	// Load radio settings from eeprom
-	loadEeprom();
-	logRadioSettings();
+void before() {
+   // Load radio settings from eeprom
+   loadEeprom();
+   logRadioSettings();
 }
 
-void setup()
-{
-	pinMode(BUTTON_RESTORE_DEFAULTS_PIN, INPUT_PULLUP);
-	buttonRestoreDefaults.attach(BUTTON_RESTORE_DEFAULTS_PIN);
-	buttonRestoreDefaults.interval(BUTTON_RESTORE_DEFAULTS_PRESS_TIME_MS);
+void setup() {
+   pinMode(BUTTON_RESTORE_DEFAULTS_PIN, INPUT_PULLUP);
+   buttonRestoreDefaults.attach(BUTTON_RESTORE_DEFAULTS_PIN);
+   buttonRestoreDefaults.interval(BUTTON_RESTORE_DEFAULTS_PRESS_TIME_MS);
 }
 
-void loop()
-{
-	// Regularly print the Radio Settings we are using
-	static unsigned long lastLogTimeMs = millis();
-	const unsigned long nowMs = millis();
-	if ((nowMs - lastLogTimeMs) > DELAY_BETWEEN_RADIO_SETTINGS_PRINT_MS)
-	{
-		lastLogTimeMs = nowMs;
-		logRadioSettings();
-	}
+void loop() {
+   // Regularly print the Radio Settings we are using
+   static unsigned long lastLogTimeMs = millis();
+   const unsigned long nowMs = millis();
+   if ((nowMs - lastLogTimeMs) > DELAY_BETWEEN_RADIO_SETTINGS_PRINT_MS) {
+      lastLogTimeMs = nowMs;
+      logRadioSettings();
+   }
 
-	buttonRestoreDefaults.update();
-	if (buttonRestoreDefaults.read() == LOW)
-	{
-		// Button to restore default settings was pressed.
-		Sprintln(F("Restore default radio settings"));
-		loadDefaults();
-		saveEeprom();
-		Sprintln(F("Resetting..."));
-		// Delay to prevent restoring defaults again, immediately after reset.
-		delay(1000);
-		reset();
-	}
-}
-
-void receive( const MyMessage &message )
-{
-	if (message.type == V_CUSTOM && message.sensor == CHILD_ID_UPDATE_GATEWAY)
-	{
-		Sprintln(F("Received new Radio settings"));
-		deserializeGwSettings( message );
-		saveEeprom();
-		Sprintln(F("Resetting..."));
-		reset();
-	}
-
+   buttonRestoreDefaults.update();
+   if (buttonRestoreDefaults.read() == LOW) {
+      // Button to restore default settings was pressed.
+      Sprintln(F("Restore default radio settings"));
+      loadDefaults();
+      saveEeprom();
+      Sprintln(F("Resetting..."));
+      // Delay to prevent restoring defaults again, immediately after reset.
+      delay(1000);
+      reset();
+   }
 }

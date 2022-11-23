@@ -1,5 +1,6 @@
-#ifndef STATE_MACHINE_H
-#define STATE_MACHINE_H
+#pragma once
+
+#if !defined(GATEWAY)
 
 #include <Arduino.h>
 #include <ArrayUtils.h>
@@ -18,16 +19,6 @@ enum state {	STATE_IDLE,
 };
 extern state currState;
 
-//Message Rate
-extern uint8_t iGetMsgRate;
-extern uint8_t iArcCntAvg;
-extern uint8_t iArcCntMax;
-
 void stateMachine();
-void store_ArcCnt_in_array();
-uint8_t get_rf24_register_arc_cnt();
-unsigned long transmit(size_t iPayloadLength);
-void receive(const MyMessage &message);
-void MY_RF24_startListening() ;
 
-#endif // NODE_STATE_MACHINE_H
+#endif // !defined(MY_GATEWAY_FEATURE)

@@ -1,20 +1,8 @@
-#ifndef MENU_H
-#define MENU_H
+#pragma once
 
-//**** ENCODER & BUTTON  *****
-//#define ENCODER_OPTIMIZE_INTERRUPTS //Only when using pin2/3 (or 20/21 on mega) - using this will screw up the other interrupt routine and we actually don't need it.
-#include <Encoder.h>    // for Encoder      Download: https://github.com/PaulStoffregen/Encoder
-#include <Bounce2.h>	// button debounce  Download: https://github.com/thomasfredericks/Bounce2
-
-#include <PinConfig.h>
-#include <Vars.h>
-#include <ArrayUtils.h>
+#if !defined(GATEWAY)
 
 #include <LCDMenuLib2.h>	// Download 1.2.7: https://github.com/Jomelo/LCDMenuLib2
-
-#include <LCD.h>
-#include <StateMachine.h>
-#include <CurrentMeasurement.h>
 
 //**** LCD Menu *****
 #define _LCDML_DISP_cols             LCD_COLS
@@ -52,4 +40,4 @@ void menuResetNode(__attribute__((unused)) uint8_t param);
 
 enum page { PAGE_STATISTICS, PAGE_TIMING, PAGE_MSGRATE, PAGE_COUNTERS, PAGE_TXRXPOWER, PAGE_SLEEPPOWER, PAGE_SCANNER };
 
-#endif // MENU_H
+#endif // !defined(MY_GATEWAY_FEATURE)
