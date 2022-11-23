@@ -586,7 +586,7 @@ void lcdml_menu_display() {
 
       // display rows
       for (uint8_t n = 0; n < n_max; n++) {
-         LCD_setCursor(0, n);
+         LCD_setCursor(n, 0);
 
          // set cursor char
          if (n == LCDML.MENU_getCursorPos()) {
